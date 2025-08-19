@@ -2,9 +2,10 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { SummaryData, GroundingChunk, TechnicalAnalysis } from '../types';
+import process from 'process';
 
 // Initialize the Google AI client once using the environment variable.
-const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 
 // Helper function to remove grounding citations like [1], [2, 9] from text
@@ -71,8 +72,13 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
         temperature: 0.3,
       },
     });
+
+    if (!textResponse.text) {
+        console.error("Gemini API call for text analysis returned no text.", { response: textResponse });
+        throw new Error("The AI model did not return any analysis text. This may be due to content safety filters or an API issue.");
+    }
     
-    const analysisText = textResponse.text ?? '';
+    const analysisText = textResponse.text;
     const sources: GroundingChunk[] = textResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
 
     // Step 2: Structure the text into JSON using a schema
@@ -131,7 +137,18 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
         },
     });
     
-    const jsonString = (jsonResponse.text ?? '').trim();
+    if (!jsonResponse.text) {
+        console.error("Gemini API call for JSON structuring returned no text.", { response: jsonResponse });
+        throw new Error("The AI model failed to structure the analysis into a valid format.");
+    }
+
+    const jsonString = jsonResponse.text.replace(/^```json\s*|```\s*$/g, '').trim();
+
+    if (!jsonString) {
+        console.error("Gemini API call for JSON structuring returned empty content after cleanup.");
+        throw new Error("The AI model returned an empty response for the structured analysis.");
+    }
+
     const partialSummary: Partial<SummaryData> = JSON.parse(jsonString);
 
     // Ensure the summary object is complete to prevent runtime errors in the UI
@@ -143,7 +160,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
             todayOutlook: cleanText(partialSummary.dailyAnalysis?.todayOutlook || ''),
         },
         technicalAnalysis: {
-            bias: partialSummary.technicalAnalysis?.bias || 'Neutral',
+            bias: partialSummary.technicalAnalysis?.bias as TechnicalAnalysis['bias'] || 'Neutral',
             reasoning: cleanText(partialSummary.technicalAnalysis?.reasoning || ''),
         },
         correlatedSummary: cleanText(partialSummary.correlatedSummary || ''),
@@ -156,7 +173,10 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
       console.error("Invalid JSON response received:", (error as any).message);
       throw new Error("Failed to parse AI response. The format was invalid.");
     }
-    throw new Error("An error occurred while fetching the market analysis.");
+    if (error instanceof Error) {
+        throw error;
+    }
+    throw new Error("An unknown error occurred while fetching the market analysis.");
   }
 };
 
@@ -239,14 +259,25 @@ export const generateImageBasedAnalysis = async (
             },
         });
 
-        const text = response.text ?? '';
+        if (!response.text) {
+            console.error("Gemini API call for image analysis returned no text.", { response });
+            throw new Error("The AI model did not return any analysis from the image. This may be due to content safety filters.");
+        }
+
+        const text = response.text;
         const jsonString = text.replace(/^```json\s*|```\s*$/g, '').trim();
+
+        if (!jsonString) {
+            console.error("Gemini API call for image analysis returned empty content after cleanup.");
+            throw new Error("The AI model returned an empty response for the image analysis.");
+        }
+        
         const partialResult: Partial<ImageAnalysisResult> = JSON.parse(jsonString);
         
         // Ensure the result object is complete to prevent runtime errors
         const result: ImageAnalysisResult = {
             technicalAnalysis: {
-                bias: partialResult.technicalAnalysis?.bias || 'Neutral',
+                bias: partialResult.technicalAnalysis?.bias as TechnicalAnalysis['bias'] || 'Neutral',
                 reasoning: cleanText(partialResult.technicalAnalysis?.reasoning || ''),
             },
             correlatedSummary: cleanText(partialResult.correlatedSummary || ''),
@@ -260,6 +291,9 @@ export const generateImageBasedAnalysis = async (
             console.error("Invalid JSON response received from image analysis:", (error as any).message);
             throw new Error("Failed to parse AI response from image. The format was invalid.");
         }
-        throw new Error("An error occurred while analyzing the chart image.");
+        if (error instanceof Error) {
+            throw error;
+        }
+        throw new Error("An unknown error occurred while analyzing the chart image.");
     }
 };
