@@ -1,4 +1,3 @@
-
 {
   "name": "bohim-market-analysis-web",
   "private": true,
@@ -16,6 +15,7 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@types/node": "^20.14.9",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@vitejs/plugin-react": "^4.2.1",
