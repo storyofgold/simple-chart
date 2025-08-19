@@ -1,0 +1,184 @@
+/* Styles for PDF generation via html2canvas, which captures the dark theme */
+.printing-pdf .print-hidden {
+    display: none !important;
+}
+
+/* Fix empty space below chart by overriding fixed height */
+.printing-pdf .printable-section {
+    height: auto !important;
+    padding: 0 !important;
+}
+
+/* Reduce padding for a more compact layout */
+.printing-pdf .summary-card {
+    padding: 1rem !important;
+}
+
+/* Reduce font sizes for the dark theme PDF generation & ensure consistency */
+.printing-pdf h3.text-xl { /* Card titles */
+    font-size: 12pt !important;
+}
+
+/*
+  =================================================================
+  Definitive Font Consistency Fix for PDF (Dark Theme)
+  =================================================================
+  This block uses a "scorched earth" approach to override Tailwind's 'prose'
+  styles, which were causing inconsistent font sizes for different
+  elements like <h4> and <div>.
+
+  1. `.prose, .prose *`: A universal selector targets the container AND ALL
+     of its descendants, no matter how nested.
+  2. Reset Everything: It forcefully resets font-size, line-height, margin,
+     and padding to a consistent base.
+  3. Rebuild Hierarchy: After the reset, specific styles (like bold weight
+     and top margin) are carefully re-applied ONLY to the elements that
+     need them (e.g., h4) to restore visual hierarchy.
+*/
+.printing-pdf .summary-card .prose,
+.printing-pdf .summary-card .prose * {
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+.printing-pdf .summary-card .prose h4 {
+    font-weight: 600 !important;
+    margin-top: 0.75rem !important; /* Space above subheading */
+    margin-bottom: 0.25rem !important; /* Space below subheading */
+}
+
+
+/* Styles for light-theme direct printing via window.print() */
+@media print {
+  body {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      font-size: 9pt; /* Set a smaller base font for better density */
+  }
+  
+  .print-hidden {
+      display: none !important;
+  }
+  
+  /* Layout adjustments for printing */
+  .summary-grid {
+      grid-template-columns: 1fr !important; /* Force single column */
+      display: block !important;
+  }
+  
+  .summary-grid > * {
+      break-inside: avoid; /* Prevents cards from splitting across pages */
+      page-break-inside: avoid;
+      margin-top: 1rem; /* Adds space between cards on the printout */
+  }
+
+  main {
+    margin-top: -2rem; /* Reduce top margin for tighter layout on print */
+  }
+
+  /* Remove transforms and shadows for cleaner print */
+  .transform {
+    transform: none !important;
+  }
+  .shadow-lg {
+    box-shadow: none !important;
+  }
+
+  /* Typography adjustments for print */
+  header h1 {
+      font-size: 18pt !important;
+  }
+  header p {
+      font-size: 8pt !important;
+  }
+  .bg-slate-800.rounded-lg { /* Targets SummaryCard */
+      padding: 1rem !important; /* Reduce padding to fit more content */
+  }
+  h3.text-xl { /* Card titles */
+      font-size: 12pt !important;
+  }
+
+/*
+  =================================================================
+  Definitive Font Consistency Fix for Print (Light Theme)
+  =================================================================
+  Applying the same robust reset strategy for the light-theme print view.
+*/
+  .summary-card .prose,
+  .summary-card .prose * {
+    font-size: 9pt !important;
+    line-height: 1.35 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #1e293b !important; /* Ensure text color is also consistent */
+  }
+  
+  .summary-card .prose h4 {
+    font-weight: 600 !important;
+    margin-top: 0.75rem !important;
+    margin-bottom: 0.25rem !important; /* Space below subheading */
+  }
+
+  /* Light theme styles for printing */
+  body.printing-light {
+    background-color: #ffffff !important;
+  }
+
+  .printing-light #root,
+  .printing-light .prose {
+    color: #1e293b !important; /* slate-800 */
+    --tw-prose-body: #1e293b;
+    --tw-prose-headings: #1e293b;
+    --tw-prose-bold: #1e293b;
+  }
+
+  .printing-light .bg-slate-800,
+  .printing-light .bg-slate-900,
+  .printing-light .bg-slate-700\/50,
+  .printing-light .border-slate-700,
+  .printing-light .border-2.border-slate-700 {
+    background-color: #ffffff !important;
+    box-shadow: none !important;
+    border: 1px solid #94a3b8 !important; /* slate-400 for a more visible border */
+  }
+
+  .printing-light .text-slate-100,
+  .printing-light .text-slate-200,
+  .printing-light .text-slate-300,
+  .printing-light .text-slate-400,
+  .printing-light .text-white {
+    color: #1e293b !important;
+  }
+
+  .printing-light .border-t.border-slate-700 {
+    border-color: #94a3b8 !important; /* slate-400 */
+  }
+  
+  .printing-light a.text-cyan-400,
+  .printing-light a.text-cyan-400:hover {
+    color: #0e7490 !important; /* darker cyan-700 */
+  }
+
+  .printing-light a {
+      text-decoration: none !important;
+      color: #0e7490 !important;
+  }
+  
+  /* Preserve original icon and bias colors on light print theme */
+  .printing-light .print-preserve-color.text-cyan-400 {
+    color: #22d3ee !important;
+  }
+  .printing-light .print-preserve-color.text-green-400 {
+    color: #4ade80 !important;
+  }
+  .printing-light .print-preserve-color.text-red-400 {
+    color: #f87171 !important;
+  }
+  .printing-light .print-preserve-color.text-yellow-400 {
+    color: #facc15 !important;
+  }
+
+}
