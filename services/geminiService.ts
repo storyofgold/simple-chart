@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { SummaryData, GroundingChunk, TechnicalAnalysis } from '../types';
 
@@ -71,7 +72,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
       },
     });
     
-    const analysisText = textResponse.text;
+    const analysisText = textResponse.text ?? '';
     const sources: GroundingChunk[] = textResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
 
     // Step 2: Structure the text into JSON using a schema
@@ -130,7 +131,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
         },
     });
     
-    const jsonString = jsonResponse.text.trim();
+    const jsonString = (jsonResponse.text ?? '').trim();
     const partialSummary: Partial<SummaryData> = JSON.parse(jsonString);
 
     // Ensure the summary object is complete to prevent runtime errors in the UI
@@ -238,7 +239,7 @@ export const generateImageBasedAnalysis = async (
             },
         });
 
-        const text = response.text;
+        const text = response.text ?? '';
         const jsonString = text.replace(/^```json\s*|```\s*$/g, '').trim();
         const partialResult: Partial<ImageAnalysisResult> = JSON.parse(jsonString);
         
