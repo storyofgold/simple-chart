@@ -2,10 +2,9 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { SummaryData, GroundingChunk, TechnicalAnalysis } from '../types';
-import process from 'process';
 
-// Initialize the Google AI client once using the environment variable.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize the Google AI client once using the environment variable provided by Vite.
+const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
 
 
 // Helper function to remove grounding citations like [1], [2, 9] from text
