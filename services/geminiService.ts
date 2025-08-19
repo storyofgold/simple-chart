@@ -7,6 +7,21 @@ import { SummaryData, GroundingChunk, TechnicalAnalysis } from '../types';
 const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_API_KEY });
 
 
+// Centralized error handler to provide more specific feedback, especially for API key issues.
+const handleApiError = (error: unknown, context: string): Error => {
+    console.error(`Error during ${context}:`, error);
+
+    // Provide a clear, actionable message for API key and authentication issues.
+    if (error instanceof Error && (error.message.includes("API key") || error.message.toLowerCase().includes("authentication") || error.message.toLowerCase().includes("permission"))) {
+        return new Error("Authentication Failed. Please ensure your Gemini API key (VITE_API_KEY) is set correctly in the .env file. If you've just created or changed the file, you must restart the development server.");
+    }
+
+    // For other errors, provide context from the operation that failed.
+    const details = error instanceof Error ? error.message : 'Unknown error';
+    return new Error(`An error occurred during the ${context}. Details: ${details}`);
+};
+
+
 // Helper function to remove grounding citations like [1], [2, 9] from text
 const cleanText = (text: string): string => {
   if (!text) return '';
@@ -96,8 +111,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
     analysisText = textResponse.text;
     sources = textResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
   } catch (error) {
-    console.error("Error during text generation step:", error);
-    throw new Error(`Failed to generate the initial market analysis. Details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw handleApiError(error, "initial market analysis generation");
   }
 
   // --- Step 2: JSON Structuring ---
@@ -167,8 +181,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
     }
 
   } catch (error) {
-    console.error("Error during JSON structuring step:", error);
-    throw new Error(`Failed to structure the analysis text. Details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw handleApiError(error, "analysis text structuring");
   }
   
   // --- Step 3: JSON Parsing and Validation ---
@@ -301,8 +314,7 @@ export const generateImageBasedAnalysis = async (
         }
 
     } catch (error) {
-        console.error("Error generating image-based analysis:", error);
-        throw new Error(`Failed to generate analysis from image. Details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw handleApiError(error, "image-based analysis");
     }
 
     // --- Step 2: JSON Parsing and Validation ---
