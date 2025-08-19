@@ -58,11 +58,28 @@ Analisis Anda harus komprehensif dan mengikuti instruksi ini dengan tepat. Penge
 `;
 };
 
-export const generateMarketSummary = async (pairName: string): Promise<{ summary: SummaryData; sources: GroundingChunk[] }> => {
-  try {
-    // Step 1: Get the text analysis using Google Search
-    const textPrompt = getAnalysisTextPrompt(pairName);
 
+const getJsonStructuringPrompt = (analysisText: string): string => `
+  Berdasarkan teks analisis pasar berikut, ekstrak informasi dan format ke dalam objek JSON.
+  Pastikan semua bidang diisi. Jika suatu bagian (misalnya "recap" atau "upcomingEvents") tidak ada dalam teks, gunakan string kosong ("") atau array kosong ([]) untuk nilai yang sesuai.
+  Untuk "upcomingEvents", ekstrak semua peristiwa yang disebutkan.
+  Untuk "dailyAnalysis", pisahkan rekap dari outlook hari ini.
+  Untuk "technicalAnalysis", ekstrak bias dan alasannya.
+  Untuk "correlatedSummary", sertakan ringkasan korelasi dan juga bagian "**Skenario Eksekusi**".
+
+  Teks Analisis:
+  ---
+  ${analysisText}
+  ---
+`;
+
+export const generateMarketSummary = async (pairName: string): Promise<{ summary: SummaryData; sources: GroundingChunk[] }> => {
+  let analysisText: string;
+  let sources: GroundingChunk[];
+
+  // --- Step 1: Text Generation with Search ---
+  try {
+    const textPrompt = getAnalysisTextPrompt(pairName);
     const textResponse: GenerateContentResponse = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: textPrompt,
@@ -74,26 +91,19 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
 
     if (!textResponse.text) {
         console.error("Gemini API call for text analysis returned no text.", { response: textResponse });
-        throw new Error("The AI model did not return any analysis text. This may be due to content safety filters or an API issue.");
+        throw new Error("The AI model returned empty content during the initial analysis phase. This might be due to safety filters or a temporary API issue.");
     }
-    
-    const analysisText = textResponse.text;
-    const sources: GroundingChunk[] = textResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+    analysisText = textResponse.text;
+    sources = textResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+  } catch (error) {
+    console.error("Error during text generation step:", error);
+    throw new Error(`Failed to generate the initial market analysis. Details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 
-    // Step 2: Structure the text into JSON using a schema
-    const jsonPrompt = `
-      Berdasarkan teks analisis pasar berikut, ekstrak informasi dan format ke dalam objek JSON.
-      Pastikan semua bidang diisi. Untuk "upcomingEvents", ekstrak semua peristiwa yang disebutkan.
-      Untuk "dailyAnalysis", pisahkan rekap dari outlook hari ini.
-      Untuk "technicalAnalysis", ekstrak bias dan alasannya.
-      Untuk "correlatedSummary", sertakan ringkasan korelasi dan juga bagian "**Skenario Eksekusi**".
-
-      Teks Analisis:
-      ---
-      ${analysisText}
-      ---
-    `;
-
+  // --- Step 2: JSON Structuring ---
+  let jsonString: string;
+  try {
+    const jsonPrompt = getJsonStructuringPrompt(analysisText);
     const jsonResponse: GenerateContentResponse = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: jsonPrompt,
@@ -114,6 +124,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
                                 event: { type: Type.STRING },
                                 impact: { type: Type.STRING }
                             },
+                            required: ["date", "time", "event", "impact"]
                         }
                     },
                     dailyAnalysis: {
@@ -122,6 +133,7 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
                             recap: { type: Type.STRING },
                             todayOutlook: { type: Type.STRING }
                         },
+                         required: ["recap", "todayOutlook"]
                     },
                     technicalAnalysis: {
                         type: Type.OBJECT,
@@ -129,25 +141,38 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
                             bias: { type: Type.STRING },
                             reasoning: { type: Type.STRING }
                         },
+                        required: ["bias", "reasoning"]
                     },
                     correlatedSummary: { type: Type.STRING }
                 },
+                required: ["fundamentalNews", "upcomingEvents", "dailyAnalysis", "technicalAnalysis", "correlatedSummary"]
             },
         },
     });
     
     if (!jsonResponse.text) {
-        console.error("Gemini API call for JSON structuring returned no text.", { response: jsonResponse });
-        throw new Error("The AI model failed to structure the analysis into a valid format.");
+      console.error("Gemini API call for JSON structuring returned no text.", { response: jsonResponse });
+      throw new Error("The AI model failed to structure the analysis into a readable format.");
+    }
+    
+    jsonString = jsonResponse.text.trim();
+    if (jsonString.startsWith('```json')) {
+        jsonString = jsonString.substring(7, jsonString.length - 3).trim();
+    } else if (jsonString.startsWith('```')) {
+        jsonString = jsonString.substring(3, jsonString.length - 3).trim();
     }
 
-    const jsonString = jsonResponse.text.replace(/^```json\s*|```\s*$/g, '').trim();
-
     if (!jsonString) {
-        console.error("Gemini API call for JSON structuring returned empty content after cleanup.");
         throw new Error("The AI model returned an empty response for the structured analysis.");
     }
 
+  } catch (error) {
+    console.error("Error during JSON structuring step:", error);
+    throw new Error(`Failed to structure the analysis text. Details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+  
+  // --- Step 3: JSON Parsing and Validation ---
+  try {
     const partialSummary: Partial<SummaryData> = JSON.parse(jsonString);
 
     // Ensure the summary object is complete to prevent runtime errors in the UI
@@ -166,16 +191,11 @@ export const generateMarketSummary = async (pairName: string): Promise<{ summary
     };
     
     return { summary, sources };
+
   } catch (error) {
-    console.error("Error generating market summary:", error);
-    if (error instanceof SyntaxError) {
-      console.error("Invalid JSON response received:", (error as any).message);
-      throw new Error("Failed to parse AI response. The format was invalid.");
-    }
-    if (error instanceof Error) {
-        throw error;
-    }
-    throw new Error("An unknown error occurred while fetching the market analysis.");
+    console.error("Failed to parse JSON string. Error:", error);
+    console.error("Raw response from AI that caused the error:\n---\n" + jsonString + "\n---");
+    throw new Error("The AI model provided a response, but it was not in a valid JSON format. Please try refreshing.");
   }
 };
 
@@ -189,7 +209,7 @@ Anda adalah seorang analis teknikal pasar keuangan, seorang ahli dalam Metodolog
 - Cari skema Akumulasi atau Distribusi Wyckoff dalam gambar.
 - Identifikasi peristiwa-peristiwa kunci Wyckoff (misalnya, Climax, Reaction, Springs, Upthrusts, Signs of Strength/Weakness) dan fase pasar saat ini.
 - **PENTING:** Perkirakan dan sebutkan level harga untuk setiap struktur atau peristiwa yang Anda identifikasi. Contoh: 'terlihat Spring di bawah support 1.2500'.
-- Tentukan bias teknikal ("Bullish", "Bearish", atau "Neutral") berdasarkan apa yang Anda lihat.
+- Tentukan bias teknikal ("Bullish", "Bearish", "Neutral") berdasarkan apa yang Anda lihat.
 - Berikan alasan singkat berdasarkan pengamatan visual Anda terhadap struktur harga dan pola volume (jika terlihat) pada chart.
 
 **Konteks Tambahan (Jangan diubah, gunakan untuk korelasi):**
@@ -211,7 +231,7 @@ Anda adalah seorang analis teknikal pasar keuangan, seorang ahli dalam Metodolog
     - **Stop Loss:** Tetapkan level stop loss untuk manajemen risiko.
     - **Justifikasi:** Berikan alasan yang jelas untuk SETIAP level harga (Entry, Target, Stop Loss) berdasarkan level-level kunci dari analisis teknikal Wyckoff yang Anda identifikasi dari gambar.
 
-Respons Anda HARUS berupa objek JSON tunggal.
+Respons Anda HARUS berupa objek JSON tunggal. Jika Anda tidak dapat menentukan suatu bagian, gunakan string kosong ("") sebagai nilainya.
 `;
 };
 
@@ -225,6 +245,9 @@ export const generateImageBasedAnalysis = async (
     pairName: string,
     existingSummary: SummaryData
 ): Promise<ImageAnalysisResult> => {
+    let jsonString: string;
+
+    // --- Step 1: API Call for Image Analysis ---
     try {
         const prompt = getImageAnalysisPrompt(pairName, existingSummary);
 
@@ -251,9 +274,11 @@ export const generateImageBasedAnalysis = async (
                                 bias: { type: Type.STRING },
                                 reasoning: { type: Type.STRING },
                             },
+                             required: ["bias", "reasoning"]
                         },
                         correlatedSummary: { type: Type.STRING },
                     },
+                    required: ["technicalAnalysis", "correlatedSummary"]
                 },
             },
         });
@@ -263,14 +288,25 @@ export const generateImageBasedAnalysis = async (
             throw new Error("The AI model did not return any analysis from the image. This may be due to content safety filters.");
         }
 
-        const text = response.text;
-        const jsonString = text.replace(/^```json\s*|```\s*$/g, '').trim();
+        jsonString = response.text.trim();
+        if (jsonString.startsWith('```json')) {
+            jsonString = jsonString.substring(7, jsonString.length - 3).trim();
+        } else if (jsonString.startsWith('```')) {
+            jsonString = jsonString.substring(3, jsonString.length - 3).trim();
+        }
 
         if (!jsonString) {
             console.error("Gemini API call for image analysis returned empty content after cleanup.");
             throw new Error("The AI model returned an empty response for the image analysis.");
         }
-        
+
+    } catch (error) {
+        console.error("Error generating image-based analysis:", error);
+        throw new Error(`Failed to generate analysis from image. Details: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    // --- Step 2: JSON Parsing and Validation ---
+    try {
         const partialResult: Partial<ImageAnalysisResult> = JSON.parse(jsonString);
         
         // Ensure the result object is complete to prevent runtime errors
@@ -285,14 +321,8 @@ export const generateImageBasedAnalysis = async (
         return result;
 
     } catch (error) {
-        console.error("Error generating image-based analysis:", error);
-        if (error instanceof SyntaxError) {
-            console.error("Invalid JSON response received from image analysis:", (error as any).message);
-            throw new Error("Failed to parse AI response from image. The format was invalid.");
-        }
-        if (error instanceof Error) {
-            throw error;
-        }
-        throw new Error("An unknown error occurred while analyzing the chart image.");
+        console.error("Failed to parse JSON from image analysis. Error:", error);
+        console.error("Raw response from AI that caused the error:\n---\n" + jsonString + "\n---");
+        throw new Error("The AI's analysis of the image was not in a valid format. Please try again.");
     }
 };
